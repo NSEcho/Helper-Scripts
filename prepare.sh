@@ -36,11 +36,22 @@ EXECUTABLE=$(/usr/libexec/PlistBuddy "${APP_NAME}"/Info.plist -c "Print :CFBundl
 
 add_frida() {
 	cp FridaGadget.dylib "${APP_NAME}"
-	insert_dylib --strip-codesig --inplace \
-		@executable_path/FridaGadget.dylib \
-		"${APP_NAME}/${EXECUTABLE}" > /dev/null 2>&1
-	install_name_tool -add_rpath @executable_path/. \
-		"${APP_NAME}/${EXECUTABLE}" > /dev/null 2>&1
+	otool -L "${APP_NAME}/${EXECUTABLE}" | grep FridaGadget.dylib > /dev/null 2>&1; ec=$?
+	if [ $ec -eq 0 ]; then
+		echo -e "${GREEN}[+] Found LC_LOAD_DYLIB for FridaGadget!${END}"
+	else
+		insert_dylib --strip-codesig --inplace \
+			@executable_path/FridaGadget.dylib \
+			"${APP_NAME}/${EXECUTABLE}" > /dev/null 2>&1
+	fi
+
+	otool -l "${APP_NAME}/${EXECUTABLE}" | grep '@executable_path/\.' > /dev/null 2>&1; ec=$?
+	if [ $ec -eq 0 ]; then
+		echo -e "${GREEN}[+] Found correct entry @rpath!${END}"
+	else
+		install_name_tool -add_rpath @executable_path/. \
+			"${APP_NAME}/${EXECUTABLE}" > /dev/null 2>&1
+	fi
 }
 
 zip_application() {
@@ -57,6 +68,7 @@ sign_app() {
 }
 
 deploy() {
+	rm -rf deploy/ 2> /dev/null
 	mkdir deploy/
 	cp patched-resigned.ipa deploy/
 	cd deploy/
